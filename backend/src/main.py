@@ -6,21 +6,36 @@ import pandas as pd
 sys.path.append(os.path.dirname(os.path.abspath(__file__)))
 
 from utils import carregar_dados_entrada, limpar_tela,pausar
-import services  # Puxa o OrcamentoProcessado e os Templates via __init__.py
+from services import TemplatePadrao, TemplateCondicaoEspecial, TemplateUrgencia, WhatsAppClient, OrcamentoProcessado
 
 def meng():
     # 1. Carrega a planilha do Excel
     df = carregar_dados_entrada()
-
+    wpp = WhatsAppClient('yuri')
+    
+    # 🔄 Tenta autenticar e verificar conexão com o WhatsApp
+    print("\n🔄 Conectando ao serviço do WhatsApp...")
+    if not wpp.verificar_conexao():
+        print("⚠️ WhatsApp não está conectado. Tentando iniciar sessão...")
+        if wpp.iniciar_sessao():
+            print("⏳ Aguarde a inicialização da sessão. Se for a primeira vez,")
+            print("   escaneie o QR Code no terminal do wppconnect-server.")
+            import time
+            time.sleep(3)
+        else:
+            print("❌ Não foi possível iniciar a sessão do WhatsApp.")
+            pausar()
+            return
+            
     if df is not None:
         while True:
             print('Dados carregados com sucesso\n')
             
             # 📋 2. MAPEA E APRESENTA O MENU DE OPÇÕES
             opcoes_templates = {
-                "1": services.TemplatePadrao(),
-                "2": services.TemplateUrgencia(),
-                "3": services.TemplateCondicaoEspecial()
+                "1": TemplatePadrao(),
+                "2": TemplateUrgencia(),
+                "3": TemplateCondicaoEspecial()
             }
 
             # 🛡️ NOVO LOOP INTERNO: Exclusivo para garantir a validação do menu
@@ -57,7 +72,7 @@ def meng():
                     continue 
 
                 # Constrói o objeto dinâmico tratando os Nans e colunas infinitas
-                orcamento = services.OrcamentoProcessado.construir_da_linha(linha)
+                orcamento = OrcamentoProcessado.construir_da_linha(linha)
                 
                 print('_' * 50)
                 print(f"{index}º Cliente: {orcamento.nome_cliente}\n")
@@ -77,7 +92,16 @@ def meng():
                 texto_final = template_selecionado.gerar(orcamento)
                 
                 print("📝 MENSAGEM PRONTA PARA ENVIO:")
-                print(texto_final)
+                #print(texto_final)
+                
+                print(f"📤 Enviando mensagem para {orcamento.nome_cliente} ({orcamento.telefone})...")
+                resultado = wpp.enviar_mensagem(orcamento.telefone, texto_final)
+                
+                if resultado.get("sucesso"):
+                    print("✅ Mensagem enviada com sucesso!")
+                else:
+                    print(f"❌ Falha ao enviar mensagem: {resultado.get('erro') or resultado.get('corpo')}")
+                
                 print('_' * 50)
             
             # Pergunta se deseja repetir todo o processo (reler menu) ou encerrar o script
